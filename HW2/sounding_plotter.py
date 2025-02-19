@@ -17,7 +17,7 @@
     Virtual Temperature Equation; T_v = T * (1 + 0.61 * W_s)
     CIN/CAPE "Integration" Equation; C = g * D_Z * ((T_v_Parcel - T_v_Env)/T_v_Env)
     
-    Outputs: PDF Figures of the results
+    Outputs: PDF Figures of the results, as well as a CSV of each of the values calculated. Both CSV and PDF end with "_results" for easy identification
     
 """
 
@@ -56,7 +56,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     df.dropna(inplace=True)  # Removes nan values
     
-    df.drop_duplicates(keep='first', inplace=True)  # Removes duplicate values, while retaining the first instance of a value - this fixes graphing issues later on
+    df.drop_duplicates(subset=df.columns[0], keep='first', inplace=True)  # Removes duplicate values, while retaining the first instance of a value - this fixes graphing issues later on
     
     # Below converts each dataframe column into a smaller dataframe for plotting and manipulation, and sets the correct units for the value (units from CSV headers)
     press = df["pres[hPa]"].values * u.hPa  # Pressure in Hectopascals
@@ -181,8 +181,8 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     temp_V_parcel = parcel_profile.to('degK') * (1 + 0.61 * np.array(mixr_s_lst))  # Calculates the virtual temperature of the parcel
     
     
-    CAPE = 0 * (u.meters**2 / u.sec**2) # Initializes CAPE and CIN values (will be added to while we "integrate")
-    CIN = 0 * (u.meters**2 / u.sec**2)
+    CAPE = [0 * (u.meters**2 / u.sec**2)] # Initializes CAPE and CIN values (will be added to while we "integrate")
+    CIN = [0 * (u.meters**2 / u.sec**2)]
     
     heights_LFC = height[height <= LFC_height]  # Finds all height values less than the LFC
     
@@ -200,9 +200,9 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
             
             CIN_partial = g * delta_Z * ((temp_V_parcel[h_ind] - temp_V_env[h_ind])/temp_V_env[h_ind])  # Calculates CIN
             
-            CIN += CIN_partial  # Adds the CIN to the total CIN
+            CIN.append(CIN_partial)  # Adds the CIN to the total CIN
     
-    CIN = CIN.to('J/kg')  # Converts CIN to the correct Values, and finishes the CIN Calculation
+    CIN = sum(CIN).to('J/kg')  # Converts CIN to the correct Values, and finishes the CIN Calculation
     
     
     for h in heights_EL:  # Exact Same Setup as for CIN just different Bounds
@@ -216,9 +216,9 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
             
             CAPE_partial = g * delta_Z * ((temp_V_parcel[h_ind] - temp_V_env[h_ind])/temp_V_env[h_ind])
             
-            CAPE += CAPE_partial
+            CAPE.append(CAPE_partial)
     
-    CAPE = CAPE.to('J/kg')  # Finishes off the CAPE Calculation
+    CAPE = sum(CAPE).to('J/kg')  # Finishes off the CAPE Calculation
     
     
     
@@ -265,7 +265,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     
     plt.legend(loc='upper right', fontsize='small')  # Plots a Legend for all lines on the plot
-    plt.title(f'Skew-T Log-P Diagram: {sound[30:-4]}')  # Plots the title
+    plt.title(f'Skew-T Log-P Diagram: {sound[-18:-4]}')  # Plots the title
     skew.ax.set_xlabel('Temperature (°C)')  # Plots the x-axis title
     skew.ax.set_ylabel('Pressure (hPa)')  # Plots the y-axis title
     skew.ax.grid(True)  # Plots the background grid
@@ -277,7 +277,39 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     # h.add_grid()
     # h.plot_colormapped(u_wind, v_wind, press[:wind_barb_cutoff], label='Hodograph')
     
+    
+    output = {'pressure[hPa]' : press.m,  # The dictionary of all profiles produced by this code
+              'height[m]' : height.m,
+              'Temperature[degC]' : temp.m,
+              'Dewpoint[degC]' : dewT.m,
+              'Relative Humidity[%]' : relh,
+              'Environmental Mixing Ratio[g/kg]' : mixr.m,
+              'Wind Direction[deg]' : wddir.m,
+              'Wind Speed[kt]' : wdspkt.m,
+              'Theta[K]' : theta.m,
+              'ThetaE[K]' : thetaE.m,
+              'ThetaV[K]' : thetaV.m,
+              'Parcel Temperature [degC]' : parcel_profile.m,
+              'Saturation Mixing Ratio for the Parcel [unit-less]' : [mixs.m for mixs in mixr_s_lst],
+              'U Wind Component' : u_wind.m,
+              'V Wind Component' : v_wind.m,
+              'Parcel-Environment Temperature Difference [degC]' : path_diff_lcl.m,
+              'Environmental Virtual Temperature [degC]' : temp_V_env.m,
+              'Parcel Virtual Temperature [degC]' : temp_V_parcel.m,
+              'CAPE [J/kg]' : CAPE.m,
+              'CIN [J/kg]' : CIN.m
+              }
+    
+    
+    profiles = {key: pd.Series(value) for key,value in output.items()}  # Turns dictionary into a list of pandas series objects
+    
+    fdf = pd.concat(profiles, axis=1)  # Turns the series objects into one dataframe
+    csv_filename = f"{sound[:-4]}_results.csv"  # Name of CSV
+    
+    fdf.to_csv(csv_filename, index=False, mode='w')  # Writes the different profiles out to a CSV
+    
     plt.savefig(f"{sound[:-4]}_results.pdf")  # Automatically Saves the Final Figures as a PDF
+    
     plt.show()  # Shows each figure once it is finished being created
     
     
