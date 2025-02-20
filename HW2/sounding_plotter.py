@@ -9,7 +9,7 @@
     
     Formulas Used:
     Lifting Condensation Level Height Approximation; Z = 125 * (T-T_d)
-    Non-isothermal Hypsometric Equation (Rearranged to solve for Pressure); P = P0 * (1 - (Z * Gamma / T))^(g / (R * Gamma)) 
+    Non-isothermal Hypsometric Equation* (Rearranged to solve for Pressure); P = P0 * (1 - (Z * Gamma / T))^(g / (R * Gamma))
     Dry Parcel "Next Temperature" (DPNT); T2 = T1 * (P2/P1)^(R/C_p)
     Saturation Vapor Pressure Equation; V_s = 6.112 * exp(17.67 * T0 / (T0 + 243.5))
     Saturation Mixing Ratio Equation; W_s = epsilon * (V_s / (P0 - V_s))
@@ -17,8 +17,9 @@
     Virtual Temperature Equation; T_v = T * (1 + 0.61 * W_s)
     CIN/CAPE "Integration" Equation; C = g * D_Z * ((T_v_Parcel - T_v_Env)/T_v_Env)
     
-    Outputs: PDF Figures of the results, as well as a CSV of each of the values calculated. Both CSV and PDF end with "_results" for easy identification.
+    * Non-isothermal Hypsometric Equation Collected from Wallace and Hobbs 1977 pages 60-61
     
+    Outputs: PDF Figures of the results, as well as a CSV of each of the values calculated. Both CSV and PDF end with "_results" for easy identification.
 """
 
 
@@ -263,7 +264,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     skew.plot(press, temp, c='red', label='Temperature')  # Plots all the Profiles
     skew.plot(press, dewT, c='green', label='Dewpoint')
-    # skew.plot(press, parcel_prof_metpy, c='black', linestyle='-.', label='Parcel Profile (MetPy Generated)')
+    skew.plot(press, parcel_prof_metpy, c='black', linestyle='-', label='Parcel Profile (MetPy Generated)')
     skew.plot(press, parcel_profile, c='fuchsia', linestyle='-.', label='Parcel Profile (Hand Generated)')
     
     
