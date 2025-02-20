@@ -295,9 +295,9 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
                  f'Lowest Inversion Pressure {inversion_pressure:.2f}\n')
     
     if lft_inversion_pressure != None:  # Text considerations for when we do and don't have two plotted inversion layers
-        text = text + f"First Lifted Inversion Pressure {lft_inversion_pressure:.2f}\n" + f'MP means MetPy Generated and HG means Hand Generated\n This script is in part Powered by MetPy'
+        text = text + f"First Lifted Inversion Pressure {lft_inversion_pressure:.2f}\n" + f'MP means MetPy Generated and HG means Hand Generated\nThis script is in part Powered by MetPy'
     else:
-        text = text + f'MP means MetPy Generated and HG means Hand Generated\n This script is in part Powered by MetPy'
+        text = text + f'MP means MetPy Generated and HG means Hand Generated\nThis script is in part Powered by MetPy'
     
     skew.ax.text(0.02, 0.02, text, transform=skew.ax.transAxes, fontsize=8,  # Plots the formatted results onto our final figure
                  bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
