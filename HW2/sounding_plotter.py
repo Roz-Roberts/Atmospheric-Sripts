@@ -246,6 +246,15 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     else:
         inversion_pressure == np.nan * u.hPa  # If there is NO inversion we indicate this by setting the inversion pressure to NAN
     
+    # 1-Kilometer Wind Shear Estimation
+    
+    km_wnd_indx = np.where(height == height[height > 1000 * u.meter][0])[0][0]  # Finds the first pressure level above 1 kilometer to calculate shear from
+    u_shear, v_shear = u_wind[km_wnd_indx] - u_wind[0], v_wind[km_wnd_indx] - v_wind[0]  # Finds the U and V components of the shear
+    
+    shear_spdkt = np.sqrt(u_shear**2 + v_shear**2)  # Calculates Shear speed in knots
+    shear_dir = np.degrees(np.arctan(v_shear/u_shear))  # Calculates Shear direction in degrees
+    if shear_dir < 0:  # Makes sure that negative degree values are correctly positive
+        shear_dir = 360 + shear_dir
     
     
     fig = plt.figure(figsize=(19,9))  # Sets plotting figure
@@ -285,6 +294,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
         skew.ax.axhline(inversion_pressure,color='Orange', linestyle='--', label='Lowest Inversion (Hand Generated)')
     
     
+    
     text = (f'CAPE (MP): {cape:.2f}, CAPE (HG): {CAPE_val:.2f}\n'  # Formats all result values we want to show on the final figure
                  f'CIN (MP): {cin:.2f}, CIN (HG): {CIN_val:.2f}\n'
                  f'LCL (MP): {lcl_press:.2f}; LCL (HG): {lcl_press_aprox:.2f}\n'
@@ -292,7 +302,8 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
                  f'EL (MP): {el_press:.2f}, EL (HG): {EL_press_HG:.2f}\n'
                  f'LFC Alt. (HG): {LFC_height_HG:.2f}, EL Alt. (HG): {EL_height_HG:.2f}\n'
                  f'Surface Pressure {press[0]:.2f}\n'
-                 f'Lowest Inversion Pressure {inversion_pressure:.2f}\n')
+                 f'Lowest Inversion Pressure {inversion_pressure:.2f}\n'
+                 f'Wind Shear Speed [kts]: {shear_spdkt:.2f}, Direction [deg]: {shear_dir:.2f}\n')
     
     if lft_inversion_pressure != None:  # Text considerations for when we do and don't have two plotted inversion layers
         text = text + f"First Lifted Inversion Pressure {lft_inversion_pressure:.2f}\n" + f'MP means MetPy Generated and HG means Hand Generated\nThis script is in part Powered by MetPy'
@@ -301,7 +312,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     skew.ax.text(0.02, 0.02, text, transform=skew.ax.transAxes, fontsize=8,  # Plots the formatted results onto our final figure
                  bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
-    
+        
     
     plt.legend(loc='upper right', fontsize='small')  # Plots a Legend for all lines on the plot
     plt.title(f'Skew-T Log-P Diagram: {sound[-18:-4]}')  # Plots the title
