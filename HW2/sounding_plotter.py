@@ -17,7 +17,7 @@
     Virtual Temperature Equation; T_v = T * (1 + 0.61 * W_s)
     CIN/CAPE "Integration" Equation; C = g * D_Z * ((T_v_Parcel - T_v_Env)/T_v_Env)
     
-    Outputs: PDF Figures of the results, as well as a CSV of each of the values calculated. Both CSV and PDF end with "_results" for easy identification
+    Outputs: PDF Figures of the results, as well as a CSV of each of the values calculated. Both CSV and PDF end with "_results" for easy identification.
     
 """
 
@@ -32,9 +32,9 @@ import metpy.calc as mc
 
 current_directory = "."  # The Current Working Directory of this script
 
-sounding_files = [os.path.join(root, file) for root, dirs, files in os.walk(current_directory) for file in files if file.endswith(".csv")]  # Scans all files in working directory
+# Scans all files in working directory then collects the CSV files that are used in the following For loop, excludes results from sounding_plotter.py
+sounding_files = [os.path.join(root, file) for root, dirs, files in os.walk(current_directory) for file in files if file.endswith(".csv") and not file.endswith('_results.csv')]
 
-# Then collects the CSV files to be used in the next For loop
 
 
 ### List of all Constants used in this script
@@ -44,6 +44,20 @@ C_p = 1004 * u.joule / (u.kilogram * u.kelvin)  # Heat Capacity (ISOBARIC) of wa
 eps = 0.622  # Ratio of gas constant of water to air, unitless version (kg/kg)
 dry_rate = (9.8/1000) * u.kelvin / u.meter  # Dry Adiabatic Lapse Rate
 g = 9.8 * u.meters/(u.second ** 2)  # Normal gravity on Earth
+
+
+
+def interpolate_intersection(i, pressure_lim, temp_diff, temp_env_lim, height_lim):  # The function for finding the interpolated pressure, temperature, and height
+    p1, p2 = pressure_lim[i], pressure_lim[i+1]  # Initializations for the current values to interpolate between
+    t1, t2 = temp_diff[i], temp_diff[i+1]
+    h1, h2 = height_lim[i], height_lim[i+1]
+    
+    # Linear interpolation for pressure level, temperature, and altitude
+    p_intersect = p1 - t1 * (p2 - p1) / (t2 - t1)
+    t_intersect = temp_env_lim[i] + (temp_env_lim[i+1] - temp_env_lim[i]) * (p_intersect - p1) / (p2 - p1)
+    h_intersect = h1 + ((p_intersect - p1)/(p2 - p1)) * (h2 - h1)
+    
+    return p_intersect, t_intersect, h_intersect  # Returns desired values
 
 
 
@@ -122,7 +136,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     parcel_profile = np.array(parcel_profile) * u.degC  # Changes parcel profile into Celsius values, and finishes the parcel profile
     
-
+    
     
     u_wind, v_wind = mc.wind_components(wdspkt, wddir)  # Takes the wind speed in knots and wind direction in degrees and gets the UV components
     
@@ -141,40 +155,29 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     
     ### Hand Generated EL, LFC, CAPE, AND CIN VALUES
     
-    path_diff_lcl = parcel_profile.to('degK') - temp.to('degK')  # Calculates the T difference between the parcel path and the environment
+    temp_diff = temp.to('degK') - parcel_profile.to('degK')  # Calculates total temperature difference between the parcel and the environment
+    
+    temp_diff = temp_diff.m  # Gets only the magnitude, without the "delta_degrees_celsius"
+    
+    temp_diff_lim = temp_diff[lcl_lim:]  # Truncates data to what is needed for interpolation for EL and LFC
     
     
-    l = 0  # l index is used to determine when to flip direction of searching to find Equilibrium Level (EL), and Level of Free Convection (LFC)
-    for j in path_diff_lcl[lcl_lim:]:  # LFC found by looking from the Surface Upwards
-        if j > 0 and l==0:
-            LFC_index = np.where(path_diff_lcl == j)[0][0] - 1 # Finds the first positive value, and backs off once which indicates the LFC has started
-            l+=1  # Changes direction
+    sign_changes = np.where(np.diff(np.sign(temp_diff_lim)))[0]  # Finds every index where the sign of the difference changes, indicating an intersection
     
-    if l==0:  # If We never have a LFC
-        LFC_index = -1
+    if sign_changes.size == 0:  # If there are no sign changes then there is no EL or LFC, we set these values to Zero or Nan due to this, we will use the None indexes for future if-statements
+        EL_index = LFC_index = None
+        EL_press_HG = 0 * u.hPa
+        EL_height_HG = np.nan * u.meters
+        LFC_press_HG = 0 * u.hPa
+        LFC_height_HG = np.nan * u.meters
+        
+    else:  # Otherwise we get the indexes of the EL and LCL; then interpolate to find the exact pressure level for the EL and LCL
+        LFC_index = sign_changes[0] + lcl_lim
+        EL_index = sign_changes[-1] + lcl_lim
+        
+        LFC_press_HG, LFC_temp_HG,LFC_height_HG = interpolate_intersection(LFC_index, press, temp_diff, temp, height)  # Calculating the exact intersection point
+        EL_press_HG, EL_temp_HG, EL_height_HG = interpolate_intersection(EL_index, press, temp_diff, temp, height)
     
-    for j in np.flip(path_diff_lcl[lcl_lim:]):  # EL found by looking from "Space" down
-        if j > 0 and l==1:
-            EL_index = np.where(path_diff_lcl == j)[0][0] + 1  # Finds the first positive value, and backs off once, which is where the EL is located
-            l+=1  # Increments to stop search
-    
-    if l==0:  # If we Never have a EL
-        EL_index = -1
-    
-    if EL_index == -1:
-        EL_press_HG = 0 * u.hPa  # Collects the EL pressure, by using the index and the pressure profile
-        EL_height = 999999 * u.meters  # Collects the EL height, by using the index and the pressure profile
-    else:
-        EL_press_HG = press[EL_index]  # Collects the EL pressure, by using the index and the pressure profile
-        EL_height = height[EL_index]  # Collects the EL height, by using the index and the pressure profile
-    
-    
-    if LFC_index == -1:
-        LFC_press_HG = 0 * u.hPa  # Collects the LFC pressure, by using the index and the pressure profile
-        LFC_height = 999999 * u.meters  # Collects the LFC height, by using the index and the pressure profile
-    else:
-        LFC_press_HG = press[LFC_index]  # Collects the LFC pressure, by using the index and the pressure profile
-        LFC_height = height[LFC_index]  # Collects the LFC height, by using the index and the pressure profile
     
     
     temp_V_env = temp.to('degK') * (1 + 0.61*mixr.to('kg/kg'))  # Calculates the virtual temperature of the environment
@@ -184,10 +187,10 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     CAPE = [0 * (u.meters**2 / u.sec**2)] # Initializes CAPE and CIN values (will be added to while we "integrate")
     CIN = [0 * (u.meters**2 / u.sec**2)]
     
-    heights_LFC = height[height <= LFC_height]  # Finds all height values less than the LFC
+    heights_LFC = height[height <= LFC_height_HG]  # Finds all height values less than the LFC
     
-    heights_EL = height[~(height < LFC_height)]  # Finds all height values more than the LFC
-    heights_EL = heights_EL[heights_EL <= EL_height]  # Cuts off the height values to less than the EL
+    heights_EL = height[~(height < LFC_height_HG)]  # Finds all height values more than the LFC
+    heights_EL = heights_EL[heights_EL <= EL_height_HG]  # Cuts off the height values to less than the EL
     
     
     for h in heights_LFC:  # "Integration" to find CIN
@@ -202,7 +205,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
             
             CIN.append(CIN_partial)  # Adds the CIN to the total CIN
     
-    CIN = sum(CIN).to('J/kg')  # Converts CIN to the correct Values, and finishes the CIN Calculation
+    CIN_val = sum(CIN).to('J/kg')  # Converts CIN to the correct Values, and finishes the CIN Calculation
     
     
     for h in heights_EL:  # Exact Same Setup as for CIN just different Bounds
@@ -218,7 +221,30 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
             
             CAPE.append(CAPE_partial)
     
-    CAPE = sum(CAPE).to('J/kg')  # Finishes off the CAPE Calculation
+    CAPE_val = sum(CAPE).to('J/kg')  # Finishes off the CAPE Calculation
+    
+    if EL_index == None:  # If there is no LFC/EL then there is no CAPE and CIN, we set these to zero to indicate this fact (like earlier!)
+        CIN_val = 0.0 * u.joule / u.kilogram
+        CAPE_val = 0.0 * u.joule / u.kilogram
+    
+    
+    
+    temp_gradient = np.gradient(temp)  # Calculates the temperature gradient of the environment
+    
+    inversion_points = np.where(temp_gradient >= 0)[0]  # Finds all locations where the gradient is zero or positive, indicating an inversion is occurring
+    
+    
+    if len(inversion_points) > 0:  # If there is more than one inversion location, we need to select the first instance
+        inversion_point = inversion_points[0]  # Selects first inversion
+        inversion_pressure = press[inversion_point]  # Finds the inversion pressure
+        lft_inversion_pressure = None
+        
+        if inversion_pressure == press[0]:  # If, however, the first "inversion" is at the surface we also want to indicate the first inversion aloft as well, so we check
+            inversion_point = inversion_points[1]  # Finds next inversion location
+            lft_inversion_pressure = press[inversion_point]  # Finds the next inversion location pressure
+        
+    else:
+        inversion_pressure == np.nan * u.hPa  # If there is NO inversion we indicate this by setting the inversion pressure to NAN
     
     
     
@@ -252,13 +278,26 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     # skew.ax.axhline(lcl_press,color='purple', linestyle='--', label='Lifting Condensation Level (MetPy Generated)')
     skew.ax.axhline(lcl_press_aprox,color='purple', linestyle='--', label='Lifting Condensation Level (Hand Generated)')  # LCL Line Plotted
     
+    if lft_inversion_pressure != None:
+        skew.ax.axhline(inversion_pressure,color='Orange', linestyle='--', label='Lowest Inversion (Hand Generated)')  # Inversion Level Plotted
+        skew.ax.axhline(lft_inversion_pressure,color='goldenrod', linestyle='-.', label='First Inversion Aloft (Hand Generated)')  # Inversion Level Plotted
+    else:
+        skew.ax.axhline(inversion_pressure,color='Orange', linestyle='--', label='Lowest Inversion (Hand Generated)')
     
-    text = (f'CAPE (MP): {cape:.2f}, CAPE (HG): {CAPE:.2f}\n'  # Formats all result values we want to show on the final figure
-                 f'CIN (MP): {cin:.2f}, CIN (HG): {CIN:.2f}\n'
+    
+    text = (f'CAPE (MP): {cape:.2f}, CAPE (HG): {CAPE_val:.2f}\n'  # Formats all result values we want to show on the final figure
+                 f'CIN (MP): {cin:.2f}, CIN (HG): {CIN_val:.2f}\n'
                  f'LCL (MP): {lcl_press:.2f}; LCL (HG): {lcl_press_aprox:.2f}\n'
                  f'LFC (MP): {lfc_press:.2f}, LFC (HG): {LFC_press_HG:.2f}\n'
-                 f'EL (MP): {el_press:.2f}, EL (HG): {EL_press_HG:.2f}')
+                 f'EL (MP): {el_press:.2f}, EL (HG): {EL_press_HG:.2f}\n'
+                 f'LFC Alt. (HG): {LFC_height_HG:.2f}, EL Alt. (HG): {EL_height_HG:.2f}\n'
+                 f'Surface Pressure {press[0]:.2f}\n'
+                 f'Lowest Inversion Pressure {inversion_pressure:.2f}\n')
     
+    if lft_inversion_pressure != None:  # Text considerations for when we do and don't have two plotted inversion layers
+        text = text + f"First Lifted Inversion Pressure {lft_inversion_pressure:.2f}\n" + f'MP means MetPy Generated and HG means Hand Generated\n This script is in part Powered by MetPy'
+    else:
+        text = text + f'MP means MetPy Generated and HG means Hand Generated\n This script is in part Powered by MetPy'
     
     skew.ax.text(0.02, 0.02, text, transform=skew.ax.transAxes, fontsize=8,  # Plots the formatted results onto our final figure
                  bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
@@ -293,12 +332,15 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
               'Saturation Mixing Ratio for the Parcel [unit-less]' : [mixs.m for mixs in mixr_s_lst],
               'U Wind Component' : u_wind.m,
               'V Wind Component' : v_wind.m,
-              'Parcel-Environment Temperature Difference [degC]' : path_diff_lcl.m,
+              'Parcel-Environment Temperature Difference [degC]' : temp_diff,
               'Environmental Virtual Temperature [degC]' : temp_V_env.m,
               'Parcel Virtual Temperature [degC]' : temp_V_parcel.m,
-              'CAPE [J/kg]' : CAPE.m,
-              'CIN [J/kg]' : CIN.m
+              'CAPE [J/kg]' : CAPE,
+              'CIN [J/kg]' : CIN,
+              'Temp Gradient [degC]' : temp_gradient.m
               }
+    
+    
     
     
     profiles = {key: pd.Series(value) for key,value in output.items()}  # Turns dictionary into a list of pandas series objects
