@@ -329,6 +329,10 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     # h.plot_colormapped(u_wind, v_wind, press[:wind_barb_cutoff], label='Hodograph')
     
     
+    CIN_CAPE = CIN
+    CIN_CAPE.extend(CAPE)
+    
+    
     output = {'pressure[hPa]' : press.m,  # The dictionary of all profiles produced by this code
               'height[m]' : height.m,
               'Temperature[degC]' : temp.m,
@@ -347,8 +351,8 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
               'Parcel-Environment Temperature Difference [degC]' : temp_diff,
               'Environmental Virtual Temperature [degC]' : temp_V_env.m,
               'Parcel Virtual Temperature [degC]' : temp_V_parcel.m,
-              'CAPE [J/kg]' : CAPE,
-              'CIN [J/kg]' : CIN,
+              'CIN/CAPE (CIN/CAPE Changes past the LFC)[J/kg]' : CIN_CAPE,
+              'CIN (To Show where the LFC is)[J/kg]' : CIN,
               'Temp Gradient [degC]' : temp_gradient.m
               }
     
