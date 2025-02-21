@@ -329,7 +329,7 @@ for sound in sounding_files:  # Loop for to process each .CSV file individually
     # h.plot_colormapped(u_wind, v_wind, press[:wind_barb_cutoff], label='Hodograph')
     
     
-    CIN_CAPE = CIN
+    CIN_CAPE = CIN.copy()
     CIN_CAPE.extend(CAPE)
     
     
